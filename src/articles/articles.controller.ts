@@ -9,18 +9,21 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
-  NotFoundException
+  NotFoundException,
+  UsePipes
 } from "@nestjs/common";
 
 import { Article, ArticlesService } from "./articles.service";
 import { CreateArticleDto } from "./dto/create-article.dto";
 import { UpdateArticleDto } from "./dto/update-article.dto";
+import { CreateArticleValidationPipe } from "../common/pipes/create-article-validation.pipe";
 
 @Controller('articles')
 export class ArticlesController{
   constructor(private readonly articlesService: ArticlesService) { }
 
   @Post()
+  @UsePipes(CreateArticleValidationPipe)
   async create(@Body() dto: CreateArticleDto): Promise<Article> {
     return this.articlesService.create(dto)
   }
