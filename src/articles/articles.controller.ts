@@ -21,42 +21,31 @@ export class ArticlesController{
   constructor(private readonly articlesService: ArticlesService) { }
 
   @Post()
-  create(@Body() dto: CreateArticleDto) {
+  async create(@Body() dto: CreateArticleDto): Promise<Article> {
     return this.articlesService.create(dto)
   }
 
   @Get()
-  findAll(): Article[]{
+  async findAll(): Promise<Article[]>{
     return this.articlesService.findAll()
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number): Article {
-    const article = this.articlesService.findOne(id);
-    if (!article) {
-      throw new NotFoundException(`Article with ID ${id} not found`);
-    }
-    return article;
+  async findOne(@Param('id', ParseIntPipe) id: number): Promise<Article> {
+    return this.articlesService.findOne(id)
   }
 
   @Patch(':id')
-  update(
+  async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateArticleDto
-  ): Article {
-    const updated = this.articlesService.update(id, dto);
-    if (!updated) {
-      throw new NotFoundException(`Article with ID ${id} not found`);
-    }
-    return updated;
+  ): Promise<Article> {
+    return this.articlesService.update(id, dto)
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', ParseIntPipe) id: number): void {
-    const deleted = this.articlesService.remove(id)
-    if (!deleted) {
-      throw new NotFoundException(`Article with ID ${id} not found`);
-    }
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    await this.articlesService.remove(id)
   }
 }

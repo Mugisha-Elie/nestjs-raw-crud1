@@ -1,6 +1,8 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Inject, NotFoundException } from "@nestjs/common";
 import { CreateArticleDto } from "./dto/create-article.dto";
 import { UpdateArticleDto } from "./dto/update-article.dto";
+import { Pool } from "pg";
+import { PG_CONNECTION } from "../database/database.constants";
 
 export interface Article {
   id: number;
@@ -10,46 +12,109 @@ export interface Article {
   createdAt: Date;
 }
 
+interface ArticleRow {
+  id: number;
+  title: string;
+  content: string;
+  is_published: boolean;
+  created_at: Date;
+}
+
 @Injectable()
 export class ArticlesService {
-  private articles: Article[] = [];
-  private nextId = 1;
+  constructor(@Inject(PG_CONNECTION) private readonly pool: Pool){}
 
-  create(dto: CreateArticleDto): Article {
-    const newArticle: Article = {
-      id: this.nextId++,
-      title: dto.title,
-      content: dto.content,
-      isPublished: dto.isPublished ?? false,
-      createdAt: new Date(),
-    };
-    this.articles.push(newArticle);
-    return newArticle;
+  private mapRowToArticle(row: ArticleRow): Article {
+    return {
+      id: row.id,
+      title: row.title,
+      content: row.content,
+      isPublished: row.is_published,
+      createdAt: row.created_at,
+    }
+  }
+  
+  async create(dto: CreateArticleDto): Promise<Article> {
+    const query = `
+      INSERT INTO articles (title, content, is_published)
+      VALUES ($1, $2, $3)
+      RETURNING id, title, content, is_published, created_at
+    `;
+    const values = [dto.title, dto.content, dto.isPublished]
+    const { rows } = await this.pool.query<ArticleRow>(query, values);
+    return this.mapRowToArticle(rows[0])
   }
 
-  findAll(): Article[]{
-    return this.articles;
+  async findAll(): Promise<Article[]>{
+    const query = `
+      SELECT id, title, content, is_published, created_at
+      FROM articles
+      ORDER BY id ASC;
+    `;
+    const { rows } = await this.pool.query<ArticleRow>(query);
+    return rows.map((row) => this.mapRowToArticle(row))
   }
 
-  findOne(id: number): Article | null {
-    return this.articles.find(item => item.id === id) || null;
+  async findOne(id: number): Promise<Article> {
+    const query = `
+      SELECT id, title, content, is_published, created_at
+      FROM articles
+      WHERE id = $1
+    `;
+    const { rows } = await this.pool.query<ArticleRow>(query, [id])
+
+    if (rows.length === 0) {
+      throw new NotFoundException(`Article with ID ${id} not found`);
+    }
+    return this.mapRowToArticle(rows[0])
   }
 
-  update(id: number, dto: UpdateArticleDto): Article | null{
-    const article = this.findOne(id);
-    if (!article) return null;
+  async update(id: number, dto: UpdateArticleDto): Promise<Article>{
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (dto.title !== undefined) {
+      updates.push(`title = $${paramIndex++}`);
+      values.push(dto.title);
+    }
+
+    if (dto.content !== undefined) {
+      updates.push(`content = $${paramIndex++}`);
+      values.push(dto.title);
+    }
+
+    if (dto.isPublished !== undefined) {
+      updates.push(`is_published = $${paramIndex++}`);
+      values.push(dto.isPublished)
+    }
+
+    if (updates.length === 0) {
+      return this.findOne(id)
+    }
+
+    values.push(id);
+
+    const query = `
+      UPDATE articles
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING id, title, content, is_published, created_at;
+    `;
+
+    const { rows } = await this.pool.query(query, values);
+    if (rows.length === 0) {
+      throw new NotFoundException(`Article with ID ${id} not found`);
+    }
+    return this.mapRowToArticle(rows[0]);
     
-    if (dto.title !== undefined) article.title = dto.title;
-    if (dto.content !== undefined) article.content = dto.content;
-    if (dto.isPublished !== undefined) article.isPublished = dto.isPublished;
-
-    return article
   }
 
-  remove(id: number): boolean {
-    const index = this.articles.findIndex(item => item.id === id);
-    if (index === -1) return false;
-    this.articles.splice(index, 1);
-    return true;
+  async remove(id: number): Promise<void> {
+    const query = `DELETE FROM articles WHERE id = $1`
+    const result = await this.pool.query(query, [id])
+    if (result.rowCount === 0) {
+      throw new NotFoundException(`Article with ID ${id} not found`)
+    }
   }
 }
